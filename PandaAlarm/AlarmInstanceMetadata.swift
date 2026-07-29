@@ -7,7 +7,7 @@
 
 import AlarmKit
 
-struct AlarmInstanceMetadata: AlarmMetadata, Identifiable {
+nonisolated struct AlarmInstanceMetadata: AlarmMetadata, Identifiable {
     var id = UUID()
     var enabled: Bool
     var title: String
@@ -16,17 +16,6 @@ struct AlarmInstanceMetadata: AlarmMetadata, Identifiable {
     var task: AlarmTask
 }
 
-enum AlarmTask: Codable, Sendable {
+nonisolated enum AlarmTask: Codable, Sendable {
     case none
-}
-
-extension AlarmTask: Equatable {
-    nonisolated static func == (lhs: AlarmTask, rhs: AlarmTask) -> Bool {
-        switch (lhs, rhs) {
-        case (.none, .none):
-            return true
-        default:
-            return false
-        }
-    }
 }
