@@ -40,14 +40,16 @@ struct AlarmDismissIntent: LiveActivityIntent {
     }
 }
 
-func makeConfiguration(id: UUID, meta: AlarmInstanceMetadata) -> AlarmManager.AlarmConfiguration<AlarmInstanceMetadata> {
+func makeConfiguration(id: UUID, meta: AlarmInstanceMetadata, schedule: Alarm.Schedule?) -> AlarmManager.AlarmConfiguration<AlarmInstanceMetadata> {
     return AlarmManager.AlarmConfiguration(
         countdownDuration: Alarm.CountdownDuration(
             preAlert: nil,
             postAlert: meta.snoozeDuration.timeInterval
         ),
+        schedule: schedule,
         attributes: AlarmAttributes<AlarmInstanceMetadata>(
             presentation: makePresentation(meta: meta),
+            metadata: meta,
             tintColor: .accentColor
         ),
         stopIntent: AlarmDismissIntent(alarm: AlarmEntity(id: id)),

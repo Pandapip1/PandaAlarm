@@ -67,23 +67,10 @@ final class AlarmKitSynchronizer {
             return
         }
 
-        let alert = AlarmPresentation.Alert(
-            title: LocalizedStringResource(stringLiteral: metadata.title)
-        )
-        let presentation = AlarmPresentation(alert: alert)
-        let attributes = AlarmAttributes<AlarmInstanceMetadata>(
-            presentation: presentation,
-            metadata: metadata,
-            tintColor: .accentColor,
-        )
-
         let schedule = Alarm.Schedule.relative(
             .init(time: .init(hour: hour, minute: minute), repeats: .never)
         )
-        let configuration = AlarmManager.AlarmConfiguration<AlarmInstanceMetadata>.alarm(
-            schedule: schedule,
-            attributes: attributes
-        )
+        let configuration = makeConfiguration(id: id, meta: metadata, schedule: schedule)
 
         do {
             _ = try await AlarmManager.shared.schedule(id: id, configuration: configuration)
