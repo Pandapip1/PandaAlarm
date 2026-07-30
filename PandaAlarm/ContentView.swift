@@ -6,35 +6,96 @@
 //
 
 import SwiftUI
+import AlarmKit
+
+extension DateComponents: @retroactive Comparable {
+    public static func < (lhs: DateComponents, rhs: DateComponents) -> Bool {
+        let calendar = lhs.calendar ?? rhs.calendar ?? .current
+
+        guard let lhsDate = calendar.date(from: lhs) else {
+            preconditionFailure("Cannot compare DateComponents: lhs does not resolve to a valid Date in \(calendar). Ensure at minimum year/month/day (or hour/minute/second for a time-only comparison) are set.")
+        }
+        guard let rhsDate = calendar.date(from: rhs) else {
+            preconditionFailure("Cannot compare DateComponents: rhs does not resolve to a valid Date in \(calendar). Ensure at minimum year/month/day (or hour/minute/second for a time-only comparison) are set.")
+        }
+
+        return lhsDate < rhsDate
+    }
+}
 
 struct ContentView: View {
-    @State private var alarms: [AlarmInstanceMetadata] = [
-        AlarmInstanceMetadata(enabled: true, title: "Wake up", scheduledTime: DateComponents(hour: 7, minute: 30), snoozeDuration: Duration.seconds(5 * 60), task: .none),
-        AlarmInstanceMetadata(enabled: true, title: "Weekend", scheduledTime: DateComponents(hour: 9, minute: 30), snoozeDuration: Duration.seconds(5 * 60), task: .none),
-        AlarmInstanceMetadata(enabled: false, title: "Nap reminder", scheduledTime: DateComponents(hour: 13, minute: 45), snoozeDuration: Duration.seconds(5 * 60), task: .none)
-    ];
+    @State private var alarms: IdentifiedSet<AlarmInstanceMetadata> = IdentifiedSet.init();
+    @State private var userAuthorized = false
     var body: some View {
-        TabView {
-            Tab("Alarms", systemImage: "alarm.fill") {
-                AlarmsView(alarms: $alarms)
+        if self.userAuthorized {
+            TabView {
+                Tab("Alarms", systemImage: "alarm.fill") {
+                    AlarmsView(alarms: $alarms)
+                }
+                
+                
+                Tab("Demos", systemImage: "puzzlepiece.fill") {
+                    Text("Demos")
+                }
+                
+                
+                Tab("Settings", systemImage: "gearshape.fill") {
+                    Text("Settings")
+                }
             }
-
-
-            Tab("Demos", systemImage: "puzzlepiece.fill") {
-                Text("Demos")
+            .task { await monitorAlarms() }
+            .onAppear() { checkAuthorization() }
+        } else {
+            VStack {
+                Image(systemName: "shield.slash.fill")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .foregroundStyle(.tint)
+                    .padding()
+                // TODO: Use template for app name
+                Text("Alarms permission has not been granted. Please go to Settings > Apps > Panda Alarm and manually enable it.")
+                Button(
+                    action: checkAuthorization
+                ) {
+                    Label("Check Again", systemImage: "arrow.clockwise")
+                      .foregroundColor(.blue)
+                      .padding()
+                }
             }
-
-
-            Tab("Settings", systemImage: "gearshape.fill") {
-                Text("Settings")
+            .padding()
+            .onAppear() { checkAuthorization() }
+        }
+    }
+    
+    private func checkAuthorization() {
+        switch AlarmManager.shared.authorizationState {
+        case .notDetermined:
+            self.userAuthorized = false;
+            Task {
+                let _ = try await AlarmManager.shared.requestAuthorization()
+                checkAuthorization()
             }
-        };
-    }   
+        case .denied:
+            self.userAuthorized = false;
+            break
+        case .authorized:
+            self.userAuthorized = true;
+            break
+        @unknown default:
+            self.userAuthorized = false;
+            break
+        }
+    }
+    
+    private func monitorAlarms() async {
+        for await systemAlarms in AlarmManager.shared.alarmUpdates {
+        }
+    }
 }
 
 
 struct AlarmsView: View {
-    @Binding var alarms: [AlarmInstanceMetadata]
+    @Binding var alarms: IdentifiedSet<AlarmInstanceMetadata>
  
     var body: some View {
         NavigationStack {
@@ -47,11 +108,15 @@ struct AlarmsView: View {
                     )
                 } else {
                     List {
-                        ForEach($alarms) { $alarm in
-                            AlarmRow(alarm: $alarm)
+                        ForEach(alarms.sorted { $0.scheduledTime < $1.scheduledTime }, id: \.id) { alarm in
+                            AlarmRow(alarm: Binding(
+                                get: { alarms[alarm.id] ?? alarm },
+                                set: { alarms[alarm.id] = $0 }
+                            ))
                         }
                         .onDelete { indexSet in
-                            alarms.remove(atOffsets: indexSet)
+                            let sorted = alarms.sorted { $0.scheduledTime < $1.scheduledTime }
+                            indexSet.map { sorted[$0] }.forEach { alarms.remove($0) }
                         }
                     }
                 }
@@ -70,7 +135,7 @@ struct AlarmsView: View {
     }
  
     private func addAlarm() {
-        alarms.append(
+        alarms.insert(
             AlarmInstanceMetadata(
                 enabled: false,
                 title: "New alarm",
