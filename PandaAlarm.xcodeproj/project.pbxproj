@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		86B93523301BF776008E4E93 /* PandaAlarmIntents in Frameworks */ = {isa = PBXBuildFile; productRef = 86B93522301BF776008E4E93 /* PandaAlarmIntents */; };
+		86B93527301BF9C7008E4E93 /* PandaAlarmIntents in Frameworks */ = {isa = PBXBuildFile; productRef = 86B93526301BF9C7008E4E93 /* PandaAlarmIntents */; };
 		86D9B008301A85EE00C60AAA /* AlarmKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 86D9B007301A85ED00C60AAA /* AlarmKit.framework */; };
 		86D9B011301A880500C60AAA /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 86D9B010301A880500C60AAA /* WidgetKit.framework */; };
 		86D9B013301A880500C60AAA /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 86D9B012301A880500C60AAA /* SwiftUI.framework */; };
@@ -65,6 +67,8 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				AlarmInstanceMetadata.swift,
+				AlarmPresentation.swift,
+				AlarmSetup.swift,
 			);
 			target = 86D9B00E301A880500C60AAA /* PandaAlarmWidgetExtension */;
 		};
@@ -96,6 +100,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				86D9B008301A85EE00C60AAA /* AlarmKit.framework in Frameworks */,
+				86B93523301BF776008E4E93 /* PandaAlarmIntents in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -104,6 +109,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				86D9B013301A880500C60AAA /* SwiftUI.framework in Frameworks */,
+				86B93527301BF9C7008E4E93 /* PandaAlarmIntents in Frameworks */,
 				86D9B011301A880500C60AAA /* WidgetKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -163,6 +169,7 @@
 			);
 			name = PandaAlarm;
 			packageProductDependencies = (
+				86B93522301BF776008E4E93 /* PandaAlarmIntents */,
 			);
 			productName = PandaAlarm;
 			productReference = 86D9AFF8301A83F600C60AAA /* PandaAlarm.app */;
@@ -185,6 +192,7 @@
 			);
 			name = PandaAlarmWidgetExtension;
 			packageProductDependencies = (
+				86B93526301BF9C7008E4E93 /* PandaAlarmIntents */,
 			);
 			productName = PandaAlarmWidgetExtension;
 			productReference = 86D9B00F301A880500C60AAA /* PandaAlarmWidgetExtension.appex */;
@@ -217,6 +225,9 @@
 			);
 			mainGroup = 86D9AFEF301A83F600C60AAA;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				86B93521301BF776008E4E93 /* XCLocalSwiftPackageReference "PandaAlarmIntents" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 86D9AFF9301A83F600C60AAA /* Products */;
 			projectDirPath = "";
@@ -585,6 +596,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		86B93521301BF776008E4E93 /* XCLocalSwiftPackageReference "PandaAlarmIntents" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = PandaAlarmIntents;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		86B93522301BF776008E4E93 /* PandaAlarmIntents */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = PandaAlarmIntents;
+		};
+		86B93526301BF9C7008E4E93 /* PandaAlarmIntents */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 86B93521301BF776008E4E93 /* XCLocalSwiftPackageReference "PandaAlarmIntents" */;
+			productName = PandaAlarmIntents;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 86D9AFF0301A83F600C60AAA /* Project object */;
 }

@@ -52,7 +52,7 @@ private extension PandaAlarmWidgetLiveActivity {
     @ViewBuilder
     func timerText(context: ActivityViewContext<AlarmAttributes<AlarmInstanceMetadata>>) -> some View {
         switch context.state.mode {
-        case .alert(let info):
+        case .alert:
             EmptyView()
         case .countdown(let info):
             Text(info.fireDate, style: .timer)
@@ -82,20 +82,26 @@ private extension PandaAlarmWidgetLiveActivity {
     }
     
     func countdownLockScreen(context: ActivityViewContext<AlarmAttributes<AlarmInstanceMetadata>>) -> some View {
-        HStack {
-            alarmIcon(context: context)
-                .font(.callout)
-            VStack {
-                // TODO: Replace placeholder
-                Text(context.attributes.metadata?.title ?? "PLACEHOLDER")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
+        guard case .countdown(let info) = context.state.mode else { return AnyView(EmptyView()) }
+        return AnyView(
+            HStack {
+                alarmIcon(context: context)
+                    .font(.callout)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(context.attributes.metadata?.title ?? "Alarm")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    Text("Snoozed")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
-                timerText(context: context)
+                Text(info.fireDate, style: .timer)
+                    .monospacedDigit()
                     .font(.title)
                     .fontWeight(.semibold)
             }
-        }
+        )
     }
     
     func alertLockScreen(context: ActivityViewContext<AlarmAttributes<AlarmInstanceMetadata>>) -> some View {

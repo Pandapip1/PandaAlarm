@@ -7,8 +7,8 @@
 
 import AlarmKit
 import SwiftUI
-import AppIntents
 import ActivityKit
+import AppIntents
 
 /// https://forums.swift.org/t/migrating-to-swift-duration/63347
 extension Duration {
@@ -18,32 +18,10 @@ extension Duration {
     }
 }
 
-struct AlarmSnoozeIntent: LiveActivityIntent {
-    static var title: LocalizedStringResource = "Snooze"
-    @Parameter(title: "Alarm") var alarm: AlarmEntity
-    init() { }
-    init(alarm: AlarmEntity) { self.alarm = alarm }
-    func perform() async throws -> some IntentResult {
-        try AlarmManager.shared.stop(id: self.alarm.id)
-        return .result()
-    }
-}
-
-struct AlarmDismissIntent: LiveActivityIntent {
-    static var title: LocalizedStringResource = "Dismiss"
-    @Parameter(title: "Alarm") var alarm: AlarmEntity
-    init() { }
-    init(alarm: AlarmEntity) { self.alarm = alarm }
-    func perform() async throws -> some IntentResult {
-        try AlarmManager.shared.stop(id: self.alarm.id)
-        return .result()
-    }
-}
-
-func makeConfiguration(id: UUID, meta: AlarmInstanceMetadata, schedule: Alarm.Schedule?) -> AlarmManager.AlarmConfiguration<AlarmInstanceMetadata> {
+func makeConfiguration(id: UUID, meta: AlarmInstanceMetadata, schedule: Alarm.Schedule?, stopIntent: (any LiveActivityIntent)? = nil, preAlert: TimeInterval? = nil) -> AlarmManager.AlarmConfiguration<AlarmInstanceMetadata> {
     return AlarmManager.AlarmConfiguration(
         countdownDuration: Alarm.CountdownDuration(
-            preAlert: nil,
+            preAlert: preAlert,
             postAlert: meta.snoozeDuration.timeInterval
         ),
         schedule: schedule,
@@ -52,8 +30,7 @@ func makeConfiguration(id: UUID, meta: AlarmInstanceMetadata, schedule: Alarm.Sc
             metadata: meta,
             tintColor: .accentColor
         ),
-        stopIntent: AlarmDismissIntent(alarm: AlarmEntity(id: id)),
-        secondaryIntent: AlarmSnoozeIntent(alarm: AlarmEntity(id: id)),
+        stopIntent: stopIntent,
         sound: .default
     )
 }

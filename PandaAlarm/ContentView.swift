@@ -5,8 +5,9 @@
 //  Created by Gavin John on 7/29/26.
 //
 
-import SwiftUI
+import ActivityKit
 import AlarmKit
+import SwiftUI
 
 extension DateComponents: @retroactive Comparable {
     public static func < (lhs: DateComponents, rhs: DateComponents) -> Bool {
@@ -67,7 +68,7 @@ struct ContentView: View {
                 
                 
                 Tab("Demos", systemImage: "puzzlepiece.fill") {
-                    Text("Demos")
+                    DemosView(alarmSynchronizer: alarmSynchronizer)
                 }
                 
                 
@@ -291,6 +292,72 @@ struct AlarmEditorView: View {
         alarm.scheduledTime = Calendar.current.dateComponents([.hour, .minute], from: time)
         alarm.snoozeDuration = .seconds(snoozeMinutes * 60)
         dismiss()
+    }
+}
+
+struct DemosView: View {
+    var alarmSynchronizer: AlarmKitSynchronizer
+    @State private var isScheduling = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Countdown") {
+                    Button {
+                        scheduleTestTimer()
+                    } label: {
+                        Label("Start 1-minute timer", systemImage: "timer")
+                    }
+                    .disabled(isScheduling)
+                }
+
+                if let errorMessage {
+                    Section {
+                        Text(errorMessage)
+                            .foregroundStyle(.red)
+                            .font(.caption)
+                    }
+                }
+            }
+            .navigationTitle("Demos")
+        }
+    }
+
+    private func scheduleTestTimer() {
+        print("[Demo] scheduleTestTimer called")
+        isScheduling = true
+        errorMessage = nil
+        Task { @MainActor in
+            defer { isScheduling = false }
+            do {
+                print("[Demo] building config")
+                let timerID = UUID()
+                let meta = AlarmInstanceMetadata(
+                    enabled: true,
+                    title: "Test Timer",
+                    scheduledTime: DateComponents(),
+                    snoozeDuration: Duration.seconds(60),
+                    task: .none
+                )
+                let config = AlarmManager.AlarmConfiguration<AlarmInstanceMetadata>.timer(
+                    duration: 60,
+                    attributes: AlarmAttributes<AlarmInstanceMetadata>(
+                        presentation: makePresentation(meta: meta),
+                        metadata: meta,
+                        tintColor: .accentColor
+                    ),
+                    sound: .default
+                )
+                print("[Demo] calling schedule()")
+                let alarm = try await AlarmManager.shared.schedule(id: timerID, configuration: config)
+                alarmSynchronizer.registerExternalAlarm(id: timerID)
+                print("[Demo] scheduled OK — id: \(alarm.id), state: \(alarm.state)")
+            } catch {
+                print("[Demo] schedule failed: \(error)")
+                errorMessage = error.localizedDescription
+            }
+        }
     }
 }
 

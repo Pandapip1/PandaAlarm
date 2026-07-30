@@ -11,13 +11,7 @@ import SwiftUI
 func makePresentation(meta: AlarmInstanceMetadata) -> AlarmPresentation {
     return AlarmPresentation(
         alert: AlarmPresentation.Alert(
-            title: LocalizedStringResource(stringLiteral: meta.title),
-            secondaryButton: AlarmButton(
-                text: "Snooze",
-                textColor: .secondary,
-                systemImageName: "clock.arrow.circlepath"
-            ),
-            secondaryButtonBehavior: .countdown
+            title: LocalizedStringResource(stringLiteral: meta.title)
         ),
         countdown: AlarmPresentation.Countdown(
             title: LocalizedStringResource(stringLiteral: meta.title)

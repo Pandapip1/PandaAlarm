@@ -4,5 +4,7 @@
 <dict>
 	<key>NSAlarmKitUsageDescription</key>
 	<string>PandaAlarm uses alarms to help you wake up</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 </dict>
 </plist>
