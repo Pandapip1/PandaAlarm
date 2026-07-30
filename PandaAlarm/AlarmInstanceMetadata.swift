@@ -7,7 +7,7 @@
 
 import AlarmKit
 
-nonisolated struct AlarmInstanceMetadata: AlarmMetadata, Identifiable {
+nonisolated struct AlarmInstanceMetadata: AlarmMetadata, Identifiable, Equatable {
     var id = UUID()
     var enabled: Bool
     var title: String
@@ -16,6 +16,6 @@ nonisolated struct AlarmInstanceMetadata: AlarmMetadata, Identifiable {
     var task: AlarmTask
 }
 
-nonisolated enum AlarmTask: Codable, Sendable {
+nonisolated enum AlarmTask: Codable, Sendable, Equatable {
     case none
 }
