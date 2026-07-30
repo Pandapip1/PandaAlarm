@@ -154,7 +154,7 @@ struct AlarmsView: View {
             }
             .navigationTitle("Alarms")
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .primaryAction) {
                     Button {
                         addAlarm()
                     } label: {
@@ -179,18 +179,30 @@ struct AlarmsView: View {
 }
  
 struct AlarmRow: View {
+    @State private var localeRefreshID = UUID()
     @Binding var alarm: AlarmInstanceMetadata
  
     private var timeString: String {
-        alarm.scheduledTime.description
+        guard let date = Calendar.current.date(from: alarm.scheduledTime) else {
+            return "PLACEHOLDER"
+        }
+        return date.formatted(date: .omitted, time: .shortened)
     }
  
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text(timeString)
-                    .font(.system(size: 28, weight: .medium))
+                Text(alarm.title)
+                    .font(.headline)
                     .foregroundStyle(alarm.enabled ? .primary : .secondary)
+                Text(timeString)
+                    .font(.subheadline)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .onReceive(NotificationCenter.default.publisher(for: NSLocale.currentLocaleDidChangeNotification)) { _ in
+                        localeRefreshID = UUID()
+                    }
+                    .id(localeRefreshID)
             }
  
             Spacer()
