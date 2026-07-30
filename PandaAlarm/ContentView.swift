@@ -54,6 +54,8 @@ final class AlarmAuthorizationManager {
 struct ContentView: View {
     @State private var alarms: IdentifiedSet<AlarmInstanceMetadata> = IdentifiedSet.init();
     @State private var authManager = AlarmAuthorizationManager()
+    @State private var isReconciling = false
+    @State private var reconcilePending = false
     
     @Environment(\.scenePhase) private var scenePhase
 
@@ -78,6 +80,9 @@ struct ContentView: View {
             .onAppear() { checkAuthorization() }
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active { authManager.syncAuthState() }
+            }
+            .onChange(of: alarms) { _, _ in
+                Task { await requestReconcile() }
             }
         } else {
             VStack {
@@ -115,21 +120,43 @@ struct ContentView: View {
     }
     
     private func monitorAlarms() async {
-        for await systemAlarms in AlarmManager.shared.alarmUpdates {
-            let systemAlarmIds = Set(systemAlarms.map { $0.id })
-            let locallyEnabledIds = Set(alarms.ids.filter { alarms[$0]?.enabled ?? false })
-            let alarmIdsToAdd = locallyEnabledIds.subtracting(systemAlarmIds)
-            let alarmIdsToUpdate = locallyEnabledIds.intersection(systemAlarmIds)
-            let alarmIdsToRemove = systemAlarmIds.subtracting(locallyEnabledIds)
+        for await _ in AlarmManager.shared.alarmUpdates {
+            await requestReconcile()
+        }
+    }
 
-            for id in alarmIdsToAdd.union(alarmIdsToUpdate) {
-                guard let metadata = alarms[id] else { continue }
-                await scheduleSystemAlarm(id: id, metadata: metadata)
+    private func requestReconcile() async {
+        if isReconciling {
+            reconcilePending = true
+            return
+        }
+        isReconciling = true
+        repeat {
+            reconcilePending = false
+            do {
+                let systemAlarms = try AlarmManager.shared.alarms
+                await reconcile(against: systemAlarms)
+            } catch {
+                print("Failed to fetch system alarms: \(error)")
             }
+        } while reconcilePending
+        isReconciling = false
+    }
 
-            for id in alarmIdsToRemove {
-                await cancelSystemAlarm(id: id)
-            }
+    private func reconcile(against systemAlarms: [Alarm]) async {
+        let systemAlarmIds = Set(systemAlarms.map { $0.id })
+        let locallyEnabledIds = Set(alarms.ids.filter { alarms[$0]?.enabled ?? false })
+        let alarmIdsToAdd = locallyEnabledIds.subtracting(systemAlarmIds)
+        let alarmIdsToUpdate = locallyEnabledIds.intersection(systemAlarmIds)
+        let alarmIdsToRemove = systemAlarmIds.subtracting(locallyEnabledIds)
+
+        for id in alarmIdsToAdd.union(alarmIdsToUpdate) {
+            guard let metadata = alarms[id] else { continue }
+            await scheduleSystemAlarm(id: id, metadata: metadata)
+        }
+
+        for id in alarmIdsToRemove {
+            await cancelSystemAlarm(id: id)
         }
     }
 
@@ -176,6 +203,7 @@ struct ContentView: View {
 
 struct AlarmsView: View {
     @Binding var alarms: IdentifiedSet<AlarmInstanceMetadata>
+    @State private var editingAlarm: AlarmInstanceMetadata?
  
     var body: some View {
         NavigationStack {
@@ -189,10 +217,13 @@ struct AlarmsView: View {
                 } else {
                     List {
                         ForEach(alarms.sorted { $0.scheduledTime < $1.scheduledTime }, id: \.id) { alarm in
-                            AlarmRow(alarm: Binding(
-                                get: { alarms[alarm.id] ?? alarm },
-                                set: { alarms[alarm.id] = $0 }
-                            ))
+                            AlarmRow(
+                                alarm: Binding(
+                                    get: { alarms[alarm.id] ?? alarm },
+                                    set: { alarms[alarm.id] = $0 }
+                                ),
+                                onEdit: { editingAlarm = alarms[alarm.id] ?? alarm }
+                            )
                         }
                         .onDelete { indexSet in
                             let sorted = alarms.sorted { $0.scheduledTime < $1.scheduledTime }
@@ -210,6 +241,14 @@ struct AlarmsView: View {
                         Image(systemName: "plus")
                     }
                 }
+            }
+            .sheet(item: $editingAlarm) { alarm in
+                AlarmEditorView(
+                    alarm: Binding(
+                        get: { alarms[alarm.id] ?? alarm },
+                        set: { alarms[alarm.id] = $0 }
+                    )
+                )
             }
         }
     }
@@ -230,6 +269,7 @@ struct AlarmsView: View {
 struct AlarmRow: View {
     @State private var localeRefreshID = UUID()
     @Binding var alarm: AlarmInstanceMetadata
+    var onEdit: () -> Void
  
     private var timeString: String {
         guard let date = Calendar.current.date(from: alarm.scheduledTime) else {
@@ -240,19 +280,22 @@ struct AlarmRow: View {
  
     var body: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(alarm.title)
-                    .font(.headline)
-                    .foregroundStyle(alarm.enabled ? .primary : .secondary)
-                Text(timeString)
-                    .font(.subheadline)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-                    .onReceive(NotificationCenter.default.publisher(for: NSLocale.currentLocaleDidChangeNotification)) { _ in
-                        localeRefreshID = UUID()
-                    }
-                    .id(localeRefreshID)
+            Button(action: onEdit) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(alarm.title)
+                        .font(.headline)
+                        .foregroundStyle(alarm.enabled ? .primary : .secondary)
+                    Text(timeString)
+                        .font(.subheadline)
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .onReceive(NotificationCenter.default.publisher(for: NSLocale.currentLocaleDidChangeNotification)) { _ in
+                            localeRefreshID = UUID()
+                        }
+                        .id(localeRefreshID)
+                }
             }
+            .buttonStyle(.plain)
  
             Spacer()
  
@@ -260,6 +303,69 @@ struct AlarmRow: View {
                 .labelsHidden()
         }
         .padding(.vertical, 4)
+    }
+}
+
+struct AlarmEditorView: View {
+    @Binding var alarm: AlarmInstanceMetadata
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var title: String
+    @State private var time: Date
+    @State private var snoozeMinutes: Int
+
+    init(alarm: Binding<AlarmInstanceMetadata>) {
+        self._alarm = alarm
+        let initial = alarm.wrappedValue
+        _title = State(initialValue: initial.title)
+        _time = State(initialValue: Calendar.current.date(from: initial.scheduledTime) ?? Date())
+        _snoozeMinutes = State(initialValue: Int(initial.snoozeDuration.components.seconds / 60))
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Name") {
+                    TextField("Alarm name", text: $title)
+                }
+
+                Section("Time") {
+                    DatePicker(
+                        "Time",
+                        selection: $time,
+                        displayedComponents: .hourAndMinute
+                    )
+                    .datePickerStyle(.wheel)
+                    .labelsHidden()
+                }
+
+                Section("Snooze") {
+                    Stepper(
+                        "Snooze: \(snoozeMinutes) min",
+                        value: $snoozeMinutes,
+                        in: 0...30
+                    )
+                }
+            }
+            .navigationTitle("Edit Alarm")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { save() }
+                        .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+    }
+
+    private func save() {
+        alarm.title = title
+        alarm.scheduledTime = Calendar.current.dateComponents([.hour, .minute], from: time)
+        alarm.snoozeDuration = .seconds(snoozeMinutes * 60)
+        dismiss()
     }
 }
 
