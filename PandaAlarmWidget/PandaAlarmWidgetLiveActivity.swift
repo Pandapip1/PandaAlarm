@@ -8,73 +8,117 @@
 import ActivityKit
 import WidgetKit
 import SwiftUI
-
-struct PandaAlarmWidgetAttributes: ActivityAttributes {
-    public struct ContentState: Codable, Hashable {
-        // Dynamic stateful properties about your activity go here!
-        var emoji: String
-    }
-
-    // Fixed non-changing properties about your activity go here!
-    var name: String
-}
+import AlarmKit
 
 struct PandaAlarmWidgetLiveActivity: Widget {
     var body: some WidgetConfiguration {
-        ActivityConfiguration(for: PandaAlarmWidgetAttributes.self) { context in
-            // Lock screen/banner UI goes here
-            VStack {
-                Text("Hello \(context.state.emoji)")
-            }
-            .activityBackgroundTint(Color.cyan)
-            .activitySystemActionForegroundColor(Color.black)
-
+        ActivityConfiguration(for: AlarmAttributes<AlarmInstanceMetadata>.self) { context in
+            lockScreenView(context: context)
+                .padding()
+                .activityBackgroundTint(.secondary.opacity(0.15))
         } dynamicIsland: { context in
             DynamicIsland {
-                // Expanded UI goes here.  Compose the expanded UI through
-                // various regions, like leading/trailing/center/bottom
                 DynamicIslandExpandedRegion(.leading) {
-                    Text("Leading")
+                    alarmIcon(context: context)
+                }
+                DynamicIslandExpandedRegion(.center) {
+                    // TODO: Replace placeholder
+                    Text(context.attributes.metadata?.title ?? "PLACEHOLDER")
+                        .font(.headline)
+                        .lineLimit(1)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    Text("Trailing")
-                }
-                DynamicIslandExpandedRegion(.bottom) {
-                    Text("Bottom \(context.state.emoji)")
-                    // more content
+                    timerText(context: context)
                 }
             } compactLeading: {
-                Text("L")
+                alarmIcon(context: context)
+                    .imageScale(.small)
             } compactTrailing: {
-                Text("T \(context.state.emoji)")
+                timerText(context: context)
             } minimal: {
-                Text(context.state.emoji)
+                alarmIcon(context: context)
+                    .imageScale(.small)
             }
-            .widgetURL(URL(string: "http://www.apple.com"))
-            .keylineTint(Color.red)
         }
     }
 }
 
-extension PandaAlarmWidgetAttributes {
-    fileprivate static var preview: PandaAlarmWidgetAttributes {
-        PandaAlarmWidgetAttributes(name: "World")
+private extension PandaAlarmWidgetLiveActivity {
+    func alarmIcon(context: ActivityViewContext<AlarmAttributes<AlarmInstanceMetadata>>) -> some View {
+        return Image(systemName: "alarm")
+            .foregroundStyle(.primary)
+    }
+    
+    @ViewBuilder
+    func timerText(context: ActivityViewContext<AlarmAttributes<AlarmInstanceMetadata>>) -> some View {
+        switch context.state.mode {
+        case .alert(let info):
+            EmptyView()
+        case .countdown(let info):
+            Text(info.fireDate, style: .timer)
+                .monospacedDigit()
+                .font(.caption)
+        case .paused:
+            EmptyView()
+        @unknown default:
+            /// TODO: Should handle this better
+            EmptyView()
+        }
+    }
+    
+    @ViewBuilder
+    func lockScreenView(context: ActivityViewContext<AlarmAttributes<AlarmInstanceMetadata>>) -> some View {
+        switch context.state.mode {
+        case .alert:
+            alertLockScreen(context: context)
+        case .countdown:
+            countdownLockScreen(context: context)
+        case .paused:
+            EmptyView()
+        @unknown default:
+            /// TODO: Should handle this better
+            EmptyView()
+        }
+    }
+    
+    func countdownLockScreen(context: ActivityViewContext<AlarmAttributes<AlarmInstanceMetadata>>) -> some View {
+        HStack {
+            alarmIcon(context: context)
+                .font(.callout)
+            VStack {
+                // TODO: Replace placeholder
+                Text(context.attributes.metadata?.title ?? "PLACEHOLDER")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                timerText(context: context)
+                    .font(.title)
+                    .fontWeight(.semibold)
+            }
+        }
+    }
+    
+    func alertLockScreen(context: ActivityViewContext<AlarmAttributes<AlarmInstanceMetadata>>) -> some View {
+        HStack {
+            alarmIcon(context: context)
+                .font(.callout)
+            VStack {
+                // TODO: Replace placeholder
+                Text(context.attributes.metadata?.title ?? "PLACEHOLDER")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Image(systemName: "alarm.waves.left.and.right")
+            }
+        }
     }
 }
 
-extension PandaAlarmWidgetAttributes.ContentState {
-    fileprivate static var smiley: PandaAlarmWidgetAttributes.ContentState {
-        PandaAlarmWidgetAttributes.ContentState(emoji: "😀")
-     }
-     
-     fileprivate static var starEyes: PandaAlarmWidgetAttributes.ContentState {
-         PandaAlarmWidgetAttributes.ContentState(emoji: "🤩")
-     }
-}
 
-#Preview("Notification", as: .content, using: PandaAlarmWidgetAttributes.preview) {
-   PandaAlarmWidgetLiveActivity()
-} contentStates: {
-    PandaAlarmWidgetAttributes.ContentState.smiley
-    PandaAlarmWidgetAttributes.ContentState.starEyes
-}
+
+//#Preview("Notification", as: .content, using: PandaAlarmWidgetAttributes.preview) {
+//   PandaAlarmWidgetLiveActivity()
+//} contentStates: {
+//    PandaAlarmWidgetAttributes.ContentState.smiley
+//    PandaAlarmWidgetAttributes.ContentState.starEyes
+//}

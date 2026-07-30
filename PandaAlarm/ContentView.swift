@@ -23,11 +23,42 @@ extension DateComponents: @retroactive Comparable {
     }
 }
 
+@Observable @MainActor
+final class AlarmAuthorizationManager {
+    private let manager = AlarmManager.shared
+    private(set) var authState: AlarmManager.AuthorizationState = .notDetermined
+
+    init() {
+        authState = manager.authorizationState
+        Task { await observeAuthorizationChanges() }
+    }
+
+    func observeAuthorizationChanges() async {
+        for await state in manager.authorizationUpdates {
+            authState = state
+        }
+    }
+    
+    func syncAuthState() {
+        authState = manager.authorizationState
+    }
+    
+    @discardableResult
+    func requestAuthorization() async throws -> AlarmManager.AuthorizationState {
+        let state = try await manager.requestAuthorization()
+        authState = state
+        return state
+    }
+}
+
 struct ContentView: View {
     @State private var alarms: IdentifiedSet<AlarmInstanceMetadata> = IdentifiedSet.init();
-    @State private var userAuthorized = false
+    @State private var authManager = AlarmAuthorizationManager()
+    
+    @Environment(\.scenePhase) private var scenePhase
+
     var body: some View {
-        if self.userAuthorized {
+        if authManager.authState == .authorized {
             TabView {
                 Tab("Alarms", systemImage: "alarm.fill") {
                     AlarmsView(alarms: $alarms)
@@ -45,6 +76,9 @@ struct ContentView: View {
             }
             .task { await monitorAlarms() }
             .onAppear() { checkAuthorization() }
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .active { authManager.syncAuthState() }
+            }
         } else {
             VStack {
                 Image(systemName: "shield.slash.fill")
@@ -54,6 +88,7 @@ struct ContentView: View {
                     .padding()
                 // TODO: Use template for app name
                 Text("Alarms permission has not been granted. Please go to Settings > Apps > Panda Alarm and manually enable it.")
+                    .font(.callout)
                 Button(
                     action: checkAuthorization
                 ) {
@@ -64,31 +99,27 @@ struct ContentView: View {
             }
             .padding()
             .onAppear() { checkAuthorization() }
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .active { authManager.syncAuthState() }
+            }
         }
     }
-    
+
     private func checkAuthorization() {
-        switch AlarmManager.shared.authorizationState {
-        case .notDetermined:
-            self.userAuthorized = false;
+        authManager.syncAuthState()
+        if authManager.authState == .notDetermined {
             Task {
-                let _ = try await AlarmManager.shared.requestAuthorization()
-                checkAuthorization()
+                try? await authManager.requestAuthorization()
             }
-        case .denied:
-            self.userAuthorized = false;
-            break
-        case .authorized:
-            self.userAuthorized = true;
-            break
-        @unknown default:
-            self.userAuthorized = false;
-            break
         }
     }
     
     private func monitorAlarms() async {
         for await systemAlarms in AlarmManager.shared.alarmUpdates {
+            let systemAlarmIds = systemAlarms.map { $0.id }
+            let alarmIdsToAdd = alarms.ids.filter { !systemAlarmIds.contains($0) }
+            let alarmIdsToUpdate = systemAlarmIds.filter { alarms[$0]?.enabled ?? false }
+            let alarmIdsToRemove = systemAlarmIds.filter { !(alarms[$0]?.enabled ?? false) }
         }
     }
 }

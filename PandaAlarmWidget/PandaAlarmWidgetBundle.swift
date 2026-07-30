@@ -11,7 +11,6 @@ import SwiftUI
 @main
 struct PandaAlarmWidgetBundle: WidgetBundle {
     var body: some Widget {
-        PandaAlarmWidget()
         PandaAlarmWidgetLiveActivity()
     }
 }
