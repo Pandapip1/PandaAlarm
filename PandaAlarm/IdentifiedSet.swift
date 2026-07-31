@@ -72,6 +72,22 @@ extension IdentifiedSet: ExpressibleByArrayLiteral {
     }
 }
 
+extension IdentifiedSet: Codable where Element: Codable {
+    init(from decoder: any Decoder) throws {
+        var container = try decoder.unkeyedContainer()
+        storage = [:]
+        while !container.isAtEnd {
+            let element = try container.decode(Element.self)
+            storage[element.id] = element
+        }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var container = encoder.unkeyedContainer()
+        for element in storage.values { try container.encode(element) }
+    }
+}
+
 extension IdentifiedSet: Equatable where Element: Equatable {}
 extension IdentifiedSet: Hashable where Element: Hashable {
     func hash(into hasher: inout Hasher) {

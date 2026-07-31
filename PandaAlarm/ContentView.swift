@@ -53,7 +53,7 @@ final class AlarmAuthorizationManager {
 }
 
 struct ContentView: View {
-    @State private var alarms: IdentifiedSet<AlarmInstanceMetadata> = IdentifiedSet.init();
+    @State private var alarms: IdentifiedSet<AlarmInstanceMetadata> = AlarmPersistence.load()
     @State private var authManager = AlarmAuthorizationManager()
     @State private var alarmSynchronizer = AlarmKitSynchronizer()
     
@@ -82,6 +82,7 @@ struct ContentView: View {
                 if newPhase == .active { authManager.syncAuthState() }
             }
             .onChange(of: alarms) { _, newValue in
+                AlarmPersistence.save(newValue)
                 Task { await alarmSynchronizer.requestReconcile(against: newValue) }
             }
         } else {
