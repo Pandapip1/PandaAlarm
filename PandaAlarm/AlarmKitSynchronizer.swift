@@ -158,7 +158,7 @@ final class AlarmKitSynchronizer {
         var scheduledIDs: [String] = []
 
         for round in 1...snoozeRoundCount {
-            let snoozeFireDate = mainDate.addingTimeInterval(Double(round) * snoozeDuration)
+            let snoozeFireDate = mainDate.addingTimeInterval(Double(round - 1) * snoozeDuration)
             let snoozeComps = Calendar.current.dateComponents([.hour, .minute], from: snoozeFireDate)
             guard let sh = snoozeComps.hour, let sm = snoozeComps.minute else { continue }
 
