@@ -13,6 +13,12 @@ private let snoozeAlarmMappingKey = "com.pandapip1.PandaAlarm.snoozeAlarmMapping
 // Number of snooze rounds pre-scheduled alongside each main alarm.
 private let snoozeRoundCount = 2
 
+// Stores the ID and scheduled fire date of a pre-scheduled snooze alarm.
+private struct SnoozeEntry: Codable {
+    var id: UUID
+    var fireDate: Date
+}
+
 @MainActor
 final class AlarmKitSynchronizer {
     private actor SerialQueue {
@@ -58,16 +64,21 @@ final class AlarmKitSynchronizer {
 
     // MARK: - Snooze mapping
 
-    private func snoozeMapping() -> [String: [String]] {
-        (UserDefaults.standard.dictionary(forKey: snoozeAlarmMappingKey) as? [String: [String]]) ?? [:]
+    private func snoozeMapping() -> [UUID: [SnoozeEntry]] {
+        guard let data = UserDefaults.standard.data(forKey: snoozeAlarmMappingKey),
+              let decoded = try? JSONDecoder().decode([String: [SnoozeEntry]].self, from: data) else { return [:] }
+        return Dictionary(uniqueKeysWithValues: decoded.compactMap { k, v in UUID(uuidString: k).map { ($0, v) } })
     }
 
-    private func saveSnoozeMapping(_ mapping: [String: [String]]) {
-        UserDefaults.standard.set(mapping, forKey: snoozeAlarmMappingKey)
+    private func saveSnoozeMapping(_ mapping: [UUID: [SnoozeEntry]]) {
+        let stringKeyed = Dictionary(uniqueKeysWithValues: mapping.map { ($0.key.uuidString, $0.value) })
+        if let data = try? JSONEncoder().encode(stringKeyed) {
+            UserDefaults.standard.set(data, forKey: snoozeAlarmMappingKey)
+        }
     }
 
-    private func allSnoozeIDs(in mapping: [String: [String]]) -> Set<UUID> {
-        Set(mapping.values.flatMap { $0 }.compactMap(UUID.init))
+    private func allSnoozeIDs(in mapping: [UUID: [SnoozeEntry]]) -> Set<UUID> {
+        Set(mapping.values.flatMap { $0 }.map(\.id))
     }
 
     // MARK: - Reconcile
@@ -80,14 +91,48 @@ final class AlarmKitSynchronizer {
             return lastPushedMetadata[id] != metadata
         }
 
-        // Remove stale snooze IDs from mapping (fired alarms are removed from AlarmKit).
+        // Rotate fired snooze alarms: when a snooze alarm leaves AlarmKit it has fired,
+        // so reschedule it one snoozeDuration after the latest remaining alarm.
         var mapping = snoozeMapping()
-        for (mainIDStr, snoozeIDStrs) in mapping {
-            let active = snoozeIDStrs.filter { s in UUID(uuidString: s).map { systemAlarmIds.contains($0) } ?? false }
-            if active.isEmpty {
-                mapping.removeValue(forKey: mainIDStr)
-            } else if active.count != snoozeIDStrs.count {
-                mapping[mainIDStr] = active
+        for (mainID, entries) in mapping {
+            let active = entries.filter { systemAlarmIds.contains($0.id) }
+            let firedCount = entries.count - active.count
+
+            guard firedCount > 0 else { continue }
+
+            guard let meta = localAlarms[mainID], meta.enabled else {
+                // Main alarm is gone or disabled — cancel remaining snooze alarms and clean up.
+                for entry in active { try? AlarmManager.shared.cancel(id: entry.id) }
+                mapping.removeValue(forKey: mainID)
+                continue
+            }
+
+            let snoozeDuration = meta.snoozeDuration.timeInterval
+            // Base on the latest known fire date across all entries, but never in the past.
+            let latestKnownFireDate = entries.map(\.fireDate).max() ?? Date()
+            let base = max(latestKnownFireDate, Date())
+            var updatedEntries = active
+
+            for i in 0..<firedCount {
+                let newFireDate = base.addingTimeInterval(Double(i + 1) * snoozeDuration)
+                let newID = UUID()
+                let comps = Calendar.current.dateComponents([.hour, .minute], from: newFireDate)
+                guard let sh = comps.hour, let sm = comps.minute else { continue }
+
+                let schedule = Alarm.Schedule.relative(.init(time: .init(hour: sh, minute: sm), repeats: .never))
+                let config = makeConfiguration(id: newID, meta: meta, schedule: schedule, preAlert: snoozeDuration)
+                do {
+                    _ = try await AlarmManager.shared.schedule(id: newID, configuration: config)
+                    updatedEntries.append(SnoozeEntry(id: newID, fireDate: newFireDate))
+                } catch {
+                    print("Failed to reschedule snooze for alarm \(mainID): \(error)")
+                }
+            }
+
+            if updatedEntries.isEmpty {
+                mapping.removeValue(forKey: mainID)
+            } else {
+                mapping[mainID] = updatedEntries
             }
         }
         saveSnoozeMapping(mapping)
@@ -134,7 +179,7 @@ final class AlarmKitSynchronizer {
                 lastPushedMetadata[id] = metadata
                 // Only schedule snooze alarms if none exist yet for this main alarm.
                 let mapping = snoozeMapping()
-                if mapping[id.uuidString] == nil {
+                if mapping[id] == nil {
                     await refreshSnoozeAlarms(for: id, hour: hour, minute: minute, metadata: metadata)
                 }
             } else {
@@ -155,7 +200,7 @@ final class AlarmKitSynchronizer {
         ) else { return }
 
         let snoozeDuration = metadata.snoozeDuration.timeInterval
-        var scheduledIDs: [String] = []
+        var newEntries: [SnoozeEntry] = []
 
         for round in 1...snoozeRoundCount {
             let snoozeFireDate = mainDate.addingTimeInterval(Double(round - 1) * snoozeDuration)
@@ -175,15 +220,15 @@ final class AlarmKitSynchronizer {
 
             do {
                 _ = try await AlarmManager.shared.schedule(id: snoozeID, configuration: snoozeConfig)
-                scheduledIDs.append(snoozeID.uuidString)
+                newEntries.append(SnoozeEntry(id: snoozeID, fireDate: snoozeFireDate))
             } catch {
                 print("Failed to schedule snooze round \(round) for alarm \(mainID): \(error)")
             }
         }
 
-        if !scheduledIDs.isEmpty {
+        if !newEntries.isEmpty {
             var mapping = snoozeMapping()
-            mapping[mainID.uuidString] = scheduledIDs
+            mapping[mainID] = newEntries
             saveSnoozeMapping(mapping)
         }
     }
@@ -206,14 +251,13 @@ final class AlarmKitSynchronizer {
 
     private func cancelSnoozeAlarms(for mainID: UUID) {
         var mapping = snoozeMapping()
-        guard let snoozeIDStrings = mapping[mainID.uuidString] else { return }
+        guard let entries = mapping[mainID] else { return }
 
-        for snoozeIDStr in snoozeIDStrings {
-            guard let snoozeID = UUID(uuidString: snoozeIDStr) else { continue }
-            try? AlarmManager.shared.cancel(id: snoozeID)
+        for entry in entries {
+            try? AlarmManager.shared.cancel(id: entry.id)
         }
 
-        mapping.removeValue(forKey: mainID.uuidString)
+        mapping.removeValue(forKey: mainID)
         saveSnoozeMapping(mapping)
     }
 }
